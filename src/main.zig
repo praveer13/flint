@@ -8,6 +8,10 @@
 const std = @import("std");
 const server = @import("net/server.zig");
 
+/// Re-exported for integration tests, which import the flint root module
+/// and call `handleConnection` directly on a test server.
+pub const connection = @import("net/connection.zig");
+
 // Pull in sub-modules so that `zig build test` discovers their test
 // blocks transitively from this root.
 test {

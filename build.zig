@@ -55,4 +55,22 @@ pub fn build(b: *std.Build) void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_exe_tests.step);
+
+    // Integration tests — TCP-level tests that start a real server on an
+    // ephemeral port and verify HTTP responses end-to-end.
+    // The test module imports the exe's root module as "flint" so it can
+    // reach connection.zig and its transitive dependencies (router, response,
+    // http_parser) without duplicating the module graph.
+    const integration_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/integration/test_http_server.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "flint", .module = exe.root_module },
+            },
+        }),
+    });
+    const run_integration = b.addRunArtifact(integration_tests);
+    test_step.dependOn(&run_integration.step);
 }
