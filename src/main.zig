@@ -6,6 +6,7 @@
 //! and vLLM worker supervision.
 
 const std = @import("std");
+const server = @import("net/server.zig");
 
 // Pull in sub-modules so that `zig build test` discovers their test
 // blocks transitively from this root.
@@ -19,6 +20,17 @@ test {
 }
 
 pub fn main(init: std.process.Init) !void {
-    _ = init;
-    std.log.info("flint starting", .{});
+    const io = init.io;
+    const gpa = init.gpa;
+
+    // Parse optional port argument: `flint [port]`
+    // Defaults to 8080 if not provided or invalid.
+    var args = std.process.Args.Iterator.init(init.minimal.args);
+    _ = args.next(); // skip program name
+    const port: u16 = if (args.next()) |port_str|
+        std.fmt.parseInt(u16, port_str, 10) catch 8080
+    else
+        8080;
+
+    try server.runServer(gpa, io, port);
 }

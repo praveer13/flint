@@ -74,7 +74,7 @@ pub fn handleConnection(gpa: std.mem.Allocator, io: Io, client: net.Stream) void
         // then returns all buffered bytes — zero-copy from the reader's
         // internal buffer.
         while (!parser.message_complete) {
-            const data = reader.peekGreedy(1) catch |err| switch (err) {
+            const data = reader.interface.peekGreedy(1) catch |err| switch (err) {
                 error.EndOfStream => return,
                 else => {
                     log.debug("read error: {}", .{err});
@@ -97,7 +97,7 @@ pub fn handleConnection(gpa: std.mem.Allocator, io: Io, client: net.Stream) void
 
             // Consume the bytes from the reader's buffer so the next
             // peekGreedy starts after them.
-            reader.toss(data.len);
+            reader.interface.toss(data.len);
         }
 
         // --- Phase 2: Route and respond ---
