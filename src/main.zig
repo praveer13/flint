@@ -14,6 +14,8 @@ test {
     _ = @import("http/response.zig");
     _ = @import("api/router.zig");
     _ = @import("api/openai.zig");
+    _ = @import("net/server.zig");
+    _ = @import("net/connection.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
