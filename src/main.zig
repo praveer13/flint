@@ -12,6 +12,8 @@ const std = @import("std");
 test {
     _ = @import("http_parser");
     _ = @import("http/response.zig");
+    _ = @import("api/router.zig");
+    _ = @import("api/openai.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
