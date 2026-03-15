@@ -1,0 +1,17 @@
+.{
+    .name = .flint,
+    .version = "0.0.0",
+    .dependencies = .{
+        .llhttp = .{
+            .url = "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.3.1.tar.gz",
+            .hash = "N-V-__8AABH_BQCTlwSpr4H19z_8_fTfeWLsbGmPL_fNtshb",
+        },
+    },
+    .fingerprint = 0x4ab03ee84146f522,
+    .minimum_zig_version = "0.16.0-dev.2694+74f361a5c",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
