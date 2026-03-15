@@ -11,6 +11,7 @@ const std = @import("std");
 // blocks transitively from this root.
 test {
     _ = @import("http_parser");
+    _ = @import("http/response.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
