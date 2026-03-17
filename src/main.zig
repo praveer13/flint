@@ -40,6 +40,7 @@ test {
     _ = @import("block_mgr/block_table.zig");
     _ = @import("scheduler/sequence.zig");
     _ = @import("scheduler/scheduler.zig");
+    _ = @import("supervisor/supervisor.zig");
 }
 
 /// Number of KV-cache blocks to manage. Determines GPU memory usage for
