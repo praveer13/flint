@@ -2,3 +2,6 @@ zig-out/
 zig-cache/
 .zig-cache/
 zig-pkg/
+.venv/
+.pytest_cache/
+__pycache__/
