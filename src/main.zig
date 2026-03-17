@@ -29,6 +29,7 @@ test {
     _ = @import("block_mgr/allocator.zig");
     _ = @import("block_mgr/block_table.zig");
     _ = @import("scheduler/sequence.zig");
+    _ = @import("scheduler/scheduler.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
