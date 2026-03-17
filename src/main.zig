@@ -21,6 +21,7 @@ test {
     _ = @import("api/openai.zig");
     _ = @import("net/server.zig");
     _ = @import("net/connection.zig");
+    _ = @import("shm/region.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
