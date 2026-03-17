@@ -22,17 +22,20 @@ const Io = std.Io;
 const http_types = @import("http_parser").types;
 const response = @import("../http/response.zig");
 const openai = @import("openai.zig");
+const Scheduler = @import("../scheduler/scheduler.zig").Scheduler;
 
 /// Routes a parsed HTTP request to the matching handler.
 ///
 /// `req` is the parsed request (method, URL, headers). `body_data` is the
 /// raw request body (may be empty for GET requests). `writer` is the
 /// connection's buffered writer, used by handlers to send the response.
+/// `scheduler` is optional: when non-null, completions requests are routed
+/// through the scheduler; when null, mock tokens are streamed.
 ///
 /// The router checks the URL path first, then validates the HTTP method.
 /// This ordering lets us distinguish "not found" (wrong path) from
 /// "method not allowed" (right path, wrong verb).
-pub fn route(req: http_types.Request, body_data: []const u8, writer: *Io.Writer) !void {
+pub fn route(req: http_types.Request, body_data: []const u8, writer: *Io.Writer, scheduler: ?*Scheduler) !void {
     if (std.mem.eql(u8, req.url, "/health")) {
         if (req.method != .GET) {
             try response.writeResponse(writer, .method_not_allowed, "text/plain", "Method Not Allowed");
@@ -54,7 +57,7 @@ pub fn route(req: http_types.Request, body_data: []const u8, writer: *Io.Writer)
             try response.writeResponse(writer, .method_not_allowed, "text/plain", "Method Not Allowed");
             return;
         }
-        try openai.handleChatCompletions(body_data, writer);
+        try openai.handleChatCompletions(body_data, writer, scheduler);
     } else {
         try response.writeResponse(writer, .not_found, "text/plain", "Not Found");
     }

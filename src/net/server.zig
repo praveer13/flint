@@ -24,6 +24,7 @@ const std = @import("std");
 const net = std.Io.net;
 const Io = std.Io;
 const connection = @import("connection.zig");
+const Scheduler = @import("../scheduler/scheduler.zig").Scheduler;
 const log = std.log.scoped(.server);
 
 /// Runs the TCP accept loop: binds to 0.0.0.0:`port`, accepts connections,
@@ -33,7 +34,13 @@ const log = std.log.scoped(.server);
 /// returns if the initial `listen()` call fails — accept-time errors are
 /// logged and swallowed so that one bad connection never brings down the
 /// server.
-pub fn runServer(gpa: std.mem.Allocator, io: Io, port: u16) !void {
+///
+/// `scheduler` is optional: when non-null, requests to `/v1/chat/completions`
+/// are routed through the scheduler and tokens stream from the GPU worker
+/// via shared memory. When null, the handler falls back to mock tokens
+/// (Phase 1 behavior), which is useful for integration tests that don't
+/// need a scheduler.
+pub fn runServer(gpa: std.mem.Allocator, io: Io, port: u16, scheduler: ?*Scheduler) !void {
     const addr: net.IpAddress = .{ .ip4 = .{ .bytes = .{ 0, 0, 0, 0 }, .port = port } };
     var server = try addr.listen(io, .{ .reuse_address = true });
     defer server.deinit(io);
@@ -50,6 +57,6 @@ pub fn runServer(gpa: std.mem.Allocator, io: Io, port: u16) !void {
         // Each fiber runs the sequential read-parse-route-respond loop
         // in connection.zig. We don't track the handle here — graceful
         // shutdown (draining in-flight connections) is a later concern.
-        _ = io.async(connection.handleConnection, .{ gpa, io, client });
+        _ = io.async(connection.handleConnection, .{ gpa, io, client, scheduler });
     }
 }

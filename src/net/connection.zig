@@ -39,6 +39,7 @@ const log = std.log.scoped(.connection);
 const Parser = @import("http_parser").Parser;
 const router = @import("../api/router.zig");
 const response = @import("../http/response.zig");
+const Scheduler = @import("../scheduler/scheduler.zig").Scheduler;
 
 /// Handles a single TCP connection through its full lifecycle.
 ///
@@ -46,7 +47,11 @@ const response = @import("../http/response.zig");
 /// the appropriate handler, and writes responses back. Loops for keep-alive
 /// connections. The caller (the accept loop in `server.zig`) spawns this as
 /// a concurrent fiber via `io.async`.
-pub fn handleConnection(gpa: std.mem.Allocator, io: Io, client: net.Stream) void {
+///
+/// `scheduler` is optional: when non-null, `/v1/chat/completions` requests
+/// are routed through the scheduler. When null, mock tokens are streamed
+/// (Phase 1 fallback for tests).
+pub fn handleConnection(gpa: std.mem.Allocator, io: Io, client: net.Stream, scheduler: ?*Scheduler) void {
     defer client.close(io);
 
     // Stack-local buffers for the connection's reader and writer. 8 KiB each
@@ -110,7 +115,7 @@ pub fn handleConnection(gpa: std.mem.Allocator, io: Io, client: net.Stream) void
 
         log.debug("{s} {s}", .{ @tagName(req.method), req.url });
 
-        router.route(req, parser.body(), &writer.interface) catch |err| {
+        router.route(req, parser.body(), &writer.interface, scheduler) catch |err| {
             log.debug("handler error: {}", .{err});
             // Handler failed — send 500 and close. We don't know what
             // partial data the handler may have written, so it's safest

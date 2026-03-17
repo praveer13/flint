@@ -37,9 +37,10 @@ fn startServer(io: Io) !struct { server: net.Server, port: u16 } {
 
 /// Accepts a single connection on `server` and handles it. Intended to be
 /// spawned as an async fiber so the test can concurrently connect as a client.
+/// Passes `null` for the scheduler — tests use the mock token fallback path.
 fn acceptOne(gpa: std.mem.Allocator, io: Io, server: *net.Server) void {
     const client = server.accept(io) catch return;
-    connection.handleConnection(gpa, io, client);
+    connection.handleConnection(gpa, io, client, null);
 }
 
 /// Connects to localhost:port, sends `request_bytes`, and reads the full
