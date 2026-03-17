@@ -22,6 +22,8 @@ test {
     _ = @import("net/server.zig");
     _ = @import("net/connection.zig");
     _ = @import("shm/region.zig");
+    _ = @import("shm/types.zig");
+    _ = @import("shm/ring_buffer.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
