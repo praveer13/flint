@@ -17,6 +17,8 @@ const MAX_SEQUENCES = @import("scheduler/scheduler.zig").MAX_SEQUENCES;
 const ring_buffer = @import("shm/ring_buffer.zig");
 const types = @import("shm/types.zig");
 const SpscRing = ring_buffer.SpscRing;
+const HeartbeatRegion = @import("shm/heartbeat.zig").HeartbeatRegion;
+const WorkerSupervisor = @import("supervisor/supervisor.zig").WorkerSupervisor;
 
 /// Re-exported for integration tests, which import the flint root module
 /// and call `handleConnection` directly on a test server.
@@ -124,6 +126,48 @@ pub fn main(init: std.process.Init) !void {
     // Start the scheduler on a dedicated OS thread.
     try scheduler.start();
     defer scheduler.stop();
+
+    // --- Spawn mock worker via supervisor ---
+    // Get heartbeat pointer from the shared memory region at the computed offset.
+    const heartbeat: *HeartbeatRegion = @ptrCast(@alignCast(region.ptr + layout.heartbeat_offset));
+
+    var workers_buf: [1]WorkerSupervisor.Worker = undefined;
+    var supervisor = WorkerSupervisor.initWithPython(
+        &workers_buf,
+        std.mem.sliceTo(SHM_PATH, 0),
+        "python/mock_worker.py",
+        heartbeat,
+        ".venv/bin/python3",
+    );
+    defer supervisor.shutdown(io);
+
+    try supervisor.spawnWorker(io, 0);
+
+    // Poll for the worker to signal ready (heartbeat advances from 0).
+    // The mock worker writes heartbeat=1 on startup. Wait up to 5 seconds.
+    {
+        const timeout_ns: i128 = 5 * std.time.ns_per_s;
+        var ts: std.os.linux.timespec = undefined;
+        _ = std.os.linux.clock_gettime(.MONOTONIC, &ts);
+        const start_ns: i128 = @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec;
+
+        while (true) {
+            if (heartbeat.read() > 0) {
+                std.log.info("worker ready (heartbeat={d})", .{heartbeat.read()});
+                break;
+            }
+
+            _ = std.os.linux.clock_gettime(.MONOTONIC, &ts);
+            const now_ns: i128 = @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec;
+            if (now_ns - start_ns > timeout_ns) {
+                std.log.warn("worker did not become ready within 5s, proceeding anyway", .{});
+                break;
+            }
+
+            // Brief spin to avoid busy-waiting too aggressively.
+            std.atomic.spinLoopHint();
+        }
+    }
 
     // Run the HTTP server, passing the scheduler for request submission.
     try server.runServer(gpa, io, port, &scheduler);

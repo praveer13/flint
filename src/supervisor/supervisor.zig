@@ -92,6 +92,10 @@ pub const WorkerSupervisor = struct {
     /// Path to the Python worker script (e.g., `python/flint_worker.py`).
     worker_script: []const u8,
 
+    /// Python interpreter binary (e.g., `"python3"` or a venv path like
+    /// `".venv/bin/python3"`). Defaults to `"python3"`.
+    python_bin: []const u8,
+
     /// Pointer to the heartbeat region in shared memory. The supervisor
     /// reads from this; workers write to it.
     heartbeat: *HeartbeatRegion,
@@ -128,6 +132,9 @@ pub const WorkerSupervisor = struct {
         last_check_time_ns: i128,
     };
 
+    /// Default Python interpreter binary.
+    const DEFAULT_PYTHON_BIN: []const u8 = "python3";
+
     /// Initialize a supervisor over the provided worker buffer.
     ///
     /// `workers_buf` must have one entry per GPU. The supervisor does not
@@ -139,6 +146,19 @@ pub const WorkerSupervisor = struct {
         heartbeat: *HeartbeatRegion,
     ) WorkerSupervisor {
         return initWithTimeout(workers_buf, shm_path, worker_script, heartbeat, DEFAULT_STALL_TIMEOUT_NS);
+    }
+
+    /// Initialize with a custom Python interpreter path.
+    pub fn initWithPython(
+        workers_buf: []Worker,
+        shm_path: []const u8,
+        worker_script: []const u8,
+        heartbeat: *HeartbeatRegion,
+        python_bin: []const u8,
+    ) WorkerSupervisor {
+        var sup = initWithTimeout(workers_buf, shm_path, worker_script, heartbeat, DEFAULT_STALL_TIMEOUT_NS);
+        sup.python_bin = python_bin;
+        return sup;
     }
 
     /// Initialize with a custom stall timeout (useful for tests).
@@ -164,6 +184,7 @@ pub const WorkerSupervisor = struct {
             .workers = workers_buf,
             .shm_path = shm_path,
             .worker_script = worker_script,
+            .python_bin = DEFAULT_PYTHON_BIN,
             .heartbeat = heartbeat,
             .stall_timeout_ns = stall_timeout_ns,
         };
@@ -202,7 +223,7 @@ pub const WorkerSupervisor = struct {
         const gpu_id_str = std.fmt.bufPrint(&gpu_id_buf, "{d}", .{gpu_id}) catch unreachable;
 
         const argv: []const []const u8 = &.{
-            "python3",
+            self.python_bin,
             self.worker_script,
             self.shm_path,
             "--gpu",

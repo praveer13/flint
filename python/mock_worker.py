@@ -12,6 +12,12 @@ import sys
 import mmap
 import os
 
+# Ensure the python/ directory is on sys.path so `flint_shm` is importable
+# regardless of the working directory or how the script is invoked.
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
+
 import numpy as np
 
 from flint_shm.types import COMPLETION_DTYPE, SCHEDULE_DTYPE
@@ -47,11 +53,12 @@ def compute_layout(ring_capacity: int = RING_CAPACITY):
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <shm_path>", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <shm_path> [--gpu <id>]", file=sys.stderr)
         sys.exit(1)
 
     shm_path = sys.argv[1]
+    # Extra arguments (e.g., --gpu 0) are accepted but ignored by the mock.
 
     # Open shared memory file.
     fd = os.open(shm_path, os.O_RDWR)
@@ -71,7 +78,14 @@ def main() -> None:
 
     # Main loop: read schedules, write fake completions.
     while True:
-        sched = schedules.wait_pop(timeout_ms=10000)
+        try:
+            sched = schedules.wait_pop(timeout_ms=10000)
+        except TimeoutError:
+            # No schedule received within the timeout. This happens when the
+            # server has no active requests or when it has been terminated.
+            # Re-check and continue — the supervisor will detect us as stalled
+            # if we stop incrementing the heartbeat.
+            continue
 
         if int(sched['is_shutdown']):
             break
