@@ -17,6 +17,11 @@ from flint_shm.types import (
 from flint_shm.ring_buffer import RingReader, RingWriter, HEADER_SIZE
 from flint_shm.heartbeat import HeartbeatRegion
 
+try:
+    from flint_shm.tokenizer import Tokenizer
+except ImportError:
+    pass  # transformers not installed
+
 __all__ = [
     "MAX_BATCH",
     "MAX_BLOCKS_PER_SEQ",
@@ -29,4 +34,5 @@ __all__ = [
     "RingWriter",
     "HEADER_SIZE",
     "HeartbeatRegion",
+    "Tokenizer",
 ]
