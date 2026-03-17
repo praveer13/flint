@@ -26,6 +26,9 @@ test {
     _ = @import("shm/ring_buffer.zig");
     _ = @import("shm/heartbeat.zig");
     _ = @import("shm/layout.zig");
+    _ = @import("block_mgr/allocator.zig");
+    _ = @import("block_mgr/block_table.zig");
+    _ = @import("scheduler/sequence.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
