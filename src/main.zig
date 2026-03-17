@@ -24,6 +24,8 @@ test {
     _ = @import("shm/region.zig");
     _ = @import("shm/types.zig");
     _ = @import("shm/ring_buffer.zig");
+    _ = @import("shm/heartbeat.zig");
+    _ = @import("shm/layout.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
