@@ -368,10 +368,6 @@ pub const Scheduler = struct {
 
             // Find the slot for this sequence to update the status.
             const slot = self.slotForSeqId(completion.seq_id);
-            if (slot) |s| {
-                @atomicStore(u32, &self.seq_status[s].last_token_id, completion.token_id, .release);
-                @atomicStore(u32, &self.seq_status[s].tokens_generated, seq.generated_tokens, .release);
-            }
 
             // Check if the sequence is done.
             const is_eos = completion.is_eos == 1;
@@ -379,8 +375,20 @@ pub const Scheduler = struct {
                 seq.state = .finished;
                 self.freeSequenceBlocks(completion.seq_id, slot);
                 if (slot) |s| {
+                    // Store is_done BEFORE tokens_generated. The HTTP fiber
+                    // reads tokens_generated with .acquire first — if it sees
+                    // the new count, the acquire guarantees it also sees
+                    // is_done=1 (which was stored with .release before the
+                    // tokens_generated store below).
                     @atomicStore(u8, &self.seq_status[s].is_done, 1, .release);
                 }
+            }
+
+            if (slot) |s| {
+                @atomicStore(u32, &self.seq_status[s].last_token_id, completion.token_id, .release);
+                // This is the "publishing" store — the HTTP fiber's .acquire
+                // load on tokens_generated synchronizes with this .release.
+                @atomicStore(u32, &self.seq_status[s].tokens_generated, seq.generated_tokens, .release);
             }
         }
     }
