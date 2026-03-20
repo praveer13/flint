@@ -132,12 +132,11 @@ pub fn main(init: std.process.Init) !void {
     const heartbeat: *HeartbeatRegion = @ptrCast(@alignCast(region.ptr + layout.heartbeat_offset));
 
     var workers_buf: [1]WorkerSupervisor.Worker = undefined;
-    var supervisor = WorkerSupervisor.initWithPython(
+    var supervisor = WorkerSupervisor.init(
         &workers_buf,
         std.mem.sliceTo(SHM_PATH, 0),
         "python/mock_worker.py",
         heartbeat,
-        ".venv/bin/python3",
     );
     defer supervisor.shutdown(io);
 
