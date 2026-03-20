@@ -9,8 +9,12 @@ set -e
 echo "==> GPU check..."
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-echo "==> Installing Python deps..."
-pip install -q numpy 'vllm>=0.6.0,<0.7.0' 2>&1 | tail -5
+echo "==> Installing uv (fast Python package manager)..."
+curl -LsSf https://astral.sh/uv/install.sh | sh 2>&1 | tail -3
+export PATH="$HOME/.local/bin:$PATH"
+
+echo "==> Installing Python deps via uv..."
+uv pip install --system numpy 'vllm>=0.6.0,<0.7.0' 2>&1 | tail -5
 
 echo "==> Verifying..."
 python3 -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0)}')"
