@@ -40,8 +40,11 @@ FLINT_PID=$!
 sleep 3
 
 if ! kill -0 $FLINT_PID 2>/dev/null; then
-    echo "ERROR: flint failed to start"
+    echo "ERROR: flint failed to start. Log:"
     cat /tmp/flint.log
+    echo ""
+    echo "Trying to run directly for error output:"
+    $FLINT 8080 || true
     exit 1
 fi
 echo "  flint running (pid $FLINT_PID)"
