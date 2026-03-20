@@ -27,9 +27,7 @@ from flint_shm.heartbeat import HeartbeatRegion
 # vLLM imports -- gated so the worker can run in mock mode without GPU.
 try:
     import torch
-    from vllm.model_executor.model_loader import get_model  # noqa: F401
-    from vllm.worker.model_runner import ModelRunner  # noqa: F401
-
+    from vllm import LLM, SamplingParams as VllmSamplingParams
     HAS_VLLM = True
 except ImportError:
     HAS_VLLM = False
@@ -84,13 +82,19 @@ class MockModel:
 
 
 class VllmModel:
-    """Real vLLM model wrapper.
+    """Real vLLM model wrapper using the LLM offline inference API.
 
-    Loads a model using vLLM's model loader and runs forward passes
-    using ModelRunner.execute_model(). This is the production path.
+    Phase 4 approach: use vLLM's high-level LLM class which manages its
+    own KV-cache and scheduling internally. The Flint scheduler submits
+    token IDs and sampling params; vLLM handles attention, block management,
+    and sampling.
 
-    NOTE: This requires a GPU and vLLM installed. Not functional in
-    Phase 4 skeleton -- will be completed when GPU testing is available.
+    Future optimization (Phase 5+): bypass LLM/LLMEngine entirely and call
+    Worker.execute_model() directly with Zig-managed block tables. This gives
+    Flint full control over KV-cache allocation but requires constructing
+    SequenceGroupMetadata manually — the most fragile vLLM integration point.
+
+    Requires: GPU + vLLM installed. Pin to vllm==0.6.x.
     """
 
     def __init__(self, model_name: str, gpu_id: int = 0):
@@ -99,30 +103,97 @@ class VllmModel:
 
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
-        # TODO(phase4): Load model via vLLM's model loader.
-        # self.device = torch.device(f"cuda:0")
-        # self.model_config = ...
-        # self.model_runner = ModelRunner(...)
-        # self.model_runner.load_model()
-        raise NotImplementedError(
-            "VllmModel not yet implemented -- needs GPU testing"
+        print(f"Loading model {model_name} on GPU {gpu_id}...", file=sys.stderr)
+        self.llm = LLM(
+            model=model_name,
+            tensor_parallel_size=1,
+            gpu_memory_utilization=0.85,
+            max_num_seqs=256,
+            enforce_eager=True,  # Disable CUDA graphs for simpler debugging
+            trust_remote_code=False,
         )
+        self.tokenizer = self.llm.get_tokenizer()
+        print(f"Model loaded. Vocab size: {self.tokenizer.vocab_size}", file=sys.stderr)
 
     def execute(self, schedule: np.void) -> list[np.void]:
-        """Run a forward pass and sample output tokens.
+        """Run inference for all sequences in the schedule.
 
-        Translates the ScheduleT into vLLM's AttentionMetadata,
-        calls execute_model() for the forward pass, samples from
-        the logits, and returns CompletionT entries.
+        For each sequence, we generate one token using vLLM's generate().
+        This is not maximally efficient (vLLM batches internally, but we
+        call generate per-iteration rather than streaming), but it proves
+        the pipeline works. Optimization comes in later phases.
+
+        The schedule contains token_ids and sampling params from the Zig
+        scheduler. We feed these to vLLM and return CompletionT entries.
         """
-        # TODO(phase4): Build AttentionMetadata from schedule fields:
-        #   - seq_ids, seq_lens, positions for sequence metadata
-        #   - block_tables, num_blocks for paged attention
-        #   - is_prefill to distinguish prefill vs decode
-        # TODO(phase4): Call self.model_runner.execute_model(...)
-        # TODO(phase4): Sample tokens from logits using temperatures/top_ps
-        # TODO(phase4): Return CompletionT entries
-        raise NotImplementedError()
+        num_seqs = int(schedule['num_sequences'])
+        if num_seqs == 0:
+            return []
+
+        completions: list[np.void] = []
+
+        # Build prompts from the schedule's token IDs.
+        # In Phase 4, the Zig scheduler sends token_ids[i] as the most
+        # recent token. For a real implementation we'd need the full
+        # token history. For now, use a simple prompt.
+        prompts = []
+        sampling_params_list = []
+        seq_ids = []
+
+        for i in range(num_seqs):
+            seq_id = int(schedule['seq_ids'][i])
+            seq_ids.append(seq_id)
+
+            # Use the token_id from the schedule as a prompt token.
+            # In a real integration, the Zig side would send the full
+            # prompt token sequence. For Phase 4, we generate from a
+            # minimal prompt.
+            token_id = int(schedule['token_ids'][i])
+            prompt_token_ids = [token_id] if token_id > 0 else [self.tokenizer.bos_token_id or 1]
+            prompts.append({"prompt_token_ids": prompt_token_ids})
+
+            temp = float(schedule['temperatures'][i])
+            top_p = float(schedule['top_ps'][i])
+            sampling_params_list.append(VllmSamplingParams(
+                temperature=max(temp, 0.01),  # vLLM requires temp > 0
+                top_p=min(max(top_p, 0.0), 1.0),
+                max_tokens=1,  # Generate exactly one token per iteration
+            ))
+
+        # Run inference. vLLM batches all sequences internally.
+        # We use generate() which handles the full pipeline.
+        outputs = self.llm.generate(
+            prompts,
+            sampling_params=sampling_params_list[0] if len(set(str(s) for s in sampling_params_list)) == 1 else sampling_params_list,
+            use_tqdm=False,
+        )
+
+        # Convert vLLM outputs to CompletionT entries.
+        for idx, output in enumerate(outputs):
+            seq_id = seq_ids[idx]
+            if output.outputs:
+                gen = output.outputs[0]
+                token_id = gen.token_ids[-1] if gen.token_ids else 0
+                # Check if this is an EOS token
+                is_eos = 1 if token_id == (self.tokenizer.eos_token_id or -1) else 0
+                logprob = -1.0  # vLLM may not return logprobs by default
+                if gen.logprobs and gen.logprobs[-1]:
+                    lp = list(gen.logprobs[-1].values())
+                    if lp:
+                        logprob = lp[0].logprob
+            else:
+                token_id = 0
+                is_eos = 0
+                logprob = -1.0
+
+            comp = np.zeros(1, dtype=COMPLETION_DTYPE)
+            comp[0]['seq_id'] = seq_id
+            comp[0]['token_id'] = token_id
+            comp[0]['is_eos'] = is_eos
+            comp[0]['logprob'] = np.float16(logprob)
+            completions.append(comp[0])
+
+        return completions
 
 
 def main() -> None:
