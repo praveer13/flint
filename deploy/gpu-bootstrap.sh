@@ -61,10 +61,19 @@ curl -sN --max-time 10 -X POST http://localhost:8080/v1/chat/completions \
 echo ""
 
 echo "  Stopping mock worker..."
-kill $MOCK_PID 2>/dev/null; wait $MOCK_PID 2>/dev/null || true
+kill $MOCK_PID 2>/dev/null || true
+wait $MOCK_PID 2>/dev/null || true
 sleep 2
 
 echo ""
+echo "==> Restarting flint for Test 2 (clean shm state)..."
+kill $FLINT_PID 2>/dev/null || true
+wait $FLINT_PID 2>/dev/null || true
+sleep 1
+$FLINT 8080 &>/tmp/flint.log &
+FLINT_PID=$!
+sleep 3
+
 echo "==> Test 2: Real vLLM worker (TinyLlama-1.1B)..."
 PYTHONPATH=python python3 python/flint_worker.py /dev/shm/flint_server \
     --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 --gpu 0 &>/tmp/vllm.log &
@@ -95,6 +104,6 @@ tail -5 /tmp/flint.log
 echo "--- vllm worker ---"
 tail -10 /tmp/vllm.log
 echo ""
-echo "==> Cleanup: kill $FLINT_PID $VLLM_PID"
+echo "==> Cleanup: kill $FLINT_PID $VLLM_PID 2>/dev/null"
 echo "==> Or keep running and test manually:"
 echo "    curl -sN -X POST http://localhost:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"test\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}'"
