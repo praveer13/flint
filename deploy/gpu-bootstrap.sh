@@ -9,10 +9,15 @@ set -e
 echo "==> GPU check..."
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-echo "==> Installing vllm (using pip to preserve CUDA torch)..."
-# Use pip with --extra-index-url for CUDA torch. This avoids replacing the
-# pre-installed CUDA torch with a CPU version (which uv tends to do).
-pip install 'vllm==0.6.6.post1' numpy --extra-index-url https://download.pytorch.org/whl/cu124 2>&1 | tail -10
+echo "==> Installing uv..."
+curl -LsSf https://astral.sh/uv/install.sh | sh 2>&1 | tail -3
+export PATH="$HOME/.local/bin:$PATH"
+
+echo "==> Installing Python deps via uv (with CUDA torch index)..."
+uv pip install --system \
+    'vllm==0.6.6.post1' numpy \
+    --extra-index-url https://download.pytorch.org/whl/cu124 \
+    2>&1 | tail -10
 
 echo "==> Verifying..."
 python3 -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0)}')"
